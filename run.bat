@@ -1,0 +1,1 @@
+D:\Emulicious\Emulicious.exe build\hello-world.gb
