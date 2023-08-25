@@ -1,1 +1,1 @@
-D:\Emulicious\Emulicious.exe build\hello-world.gb
+D:\Emulicious\Emulicious.exe build\main.gb
