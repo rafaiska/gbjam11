@@ -52,148 +52,161 @@ ClearOam:
     ld a, %11100100
     ld [rOBP0], a
 
+ConfigureMainCharSpriteData:
+    ld a, 0
+    ld [mainCharAnimationCounter], a
+    set MAIN_CHAR_FLAGS_CURR_ANM, a
+    ld [mainCharAnimationFlags], a
+    ld a, 8
+    ld [mainCharAnimationDelay], a
+
 Main:
-    jr Main
-    ld a, [rLY]
-    cp 144
-    jp nc, Main
-WaitVBlank2:
-    ld a, [rLY]
-    cp 144
-    jp c, WaitVBlank2
-
-	; Add the ball's momentum to its position in OAM.
-    ld a, [wBallMomentumX]
-    ld b, a
-    ld a, [_OAMRAM + 5]
-    add a, b
-    ld [_OAMRAM + 5], a
-
-    ld a, [wBallMomentumY]
-    ld b, a
-    ld a, [_OAMRAM + 4]
-    add a, b
-    ld [_OAMRAM + 4], a
-
-BounceOnTop:
-    ; Remember to offset the OAM position!
-    ; (8, 16) in OAM coordinates is (0, 0) on the screen.
-    ld a, [_OAMRAM + 4]
-    sub a, 16 + 1
-    ld c, a
-    ld a, [_OAMRAM + 5]
-    sub a, 8
-    ld b, a
-    call GetTileByPixel ; Returns tile address in hl
-    ld a, [hl]
-    call IsWallTile
-    jp nz, BounceOnRight
-    call CheckAndHandleBrick
-    ld a, 1
-    ld [wBallMomentumY], a
-
-BounceOnRight:
-    ld a, [_OAMRAM + 4]
-    sub a, 16
-    ld c, a
-    ld a, [_OAMRAM + 5]
-    sub a, 8 - 1
-    ld b, a
-    call GetTileByPixel
-    ld a, [hl]
-    call IsWallTile
-    jp nz, BounceOnLeft
-    call CheckAndHandleBrick
-    ld a, -1
-    ld [wBallMomentumX], a
-
-BounceOnLeft:
-    ld a, [_OAMRAM + 4]
-    sub a, 16
-    ld c, a
-    ld a, [_OAMRAM + 5]
-    sub a, 8 + 1
-    ld b, a
-    call GetTileByPixel
-    ld a, [hl]
-    call IsWallTile
-    jp nz, BounceOnBottom
-    call CheckAndHandleBrick
-    ld a, 1
-    ld [wBallMomentumX], a
-
-BounceOnBottom:
-    ld a, [_OAMRAM + 4]
-    sub a, 16 - 1
-    ld c, a
-    ld a, [_OAMRAM + 5]
-    sub a, 8
-    ld b, a
-    call GetTileByPixel
-    ld a, [hl]
-    call IsWallTile
-    jp nz, BounceDone
-    call CheckAndHandleBrick
-    ld a, -1
-    ld [wBallMomentumY], a
-BounceDone:
-
-PaddleBounce:
-    ; First, check if the ball is low enough to bounce off the paddle.
-    ld a, [_OAMRAM]
-	sub a, 4
-    ld b, a
-    ld a, [_OAMRAM + 4]
-    cp a, b
-    jp nz, PaddleBounceDone ; If the ball isn't at the same Y position as the paddle, it can't bounce.
-    ; Now let's compare the X positions of the objects to see if they're touching.
-    ld a, [_OAMRAM + 5] ; Ball's X position.
-    ld b, a
-    ld a, [_OAMRAM + 1] ; Paddle's X position.
-    sub a, 8
-    cp a, b
-    jp nc, PaddleBounceDone
-    add a, 8 + 16 ; 8 to undo, 16 as the width.
-    cp a, b
-    jp c, PaddleBounceDone
-
-    ld a, -1
-    ld [wBallMomentumY], a
-PaddleBounceDone:
-
-
-    ; Check the current keys every frame and move left or right.
     call UpdateKeys
 
-    ; First, check if the left button is pressed.
-CheckLeft:
+MoveMainChar:
+.waitVBlank:
+    ld a, [rLY]
+    cp 144
+    jr c, .waitVBlank
+
+.checkLeft:
     ld a, [wCurKeys]
     and a, PADF_LEFT
-    jp z, CheckRight
-Left:
-    ; Move the paddle one pixel to the left.
+    jr z, .checkRight
+.left:
     ld a, [_OAMRAM + 1]
     dec a
-    ; If we've already hit the edge of the playfield, don't move.
     cp a, 15
-    jp z, Main
+    jr z, .checkUp
     ld [_OAMRAM + 1], a
-    jp Main
+    ld b, DIRECTION_WEST
+    call AnimateMainChar
+    jr .checkUp
 
 ; Then check the right button.
-CheckRight:
+.checkRight:
     ld a, [wCurKeys]
     and a, PADF_RIGHT
-    jp z, Main
-Right:
+    jr z, .checkUp
+.right:
     ; Move the paddle one pixel to the right.
     ld a, [_OAMRAM + 1]
     inc a
     ; If we've already hit the edge of the playfield, don't move.
     cp a, 105
-    jp z, Main
+    jr z, .checkUp
     ld [_OAMRAM + 1], a
-    jp Main
+    ld b, DIRECTION_EAST
+    call AnimateMainChar
+
+.checkUp:
+    ld a, [wCurKeys]
+    and a, PADF_UP
+    jr z, .checkDown
+.up:
+    ; Move the paddle one pixel up
+    ld a, [_OAMRAM]
+    dec a
+    ; If we've already hit the edge of the playfield, don't move.
+    cp a, 16
+    jr z, .checkDown
+    ld [_OAMRAM], a
+    ld b, DIRECTION_NORTH
+    call AnimateMainChar
+
+.checkDown:
+    ld a, [wCurKeys]
+    and a, PADF_DOWN
+    jr z, Main
+.down:
+    ; Move the paddle one pixel down
+    ld a, [_OAMRAM]
+    inc a
+    ; If we've already hit the edge of the playfield, don't move.
+    cp a, 115
+    jr z, Main
+    ld [_OAMRAM], a
+    ld b, DIRECTION_SOUTH
+    call AnimateMainChar
+    jr Main
+
+; Animate main character sprite
+; @param b: new direction
+AnimateMainChar:
+    ; First check if direction has changed
+    ld a, [mainCharAnimationFlags]
+    and a, MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
+    cp a, b
+    jr z, .animateSprite
+    ld a, b
+
+.setSouthSprite:
+    cp a, DIRECTION_SOUTH
+    jr nz, .setNorthSprite
+    ld a, 0
+    ld [_OAMRAM + 2], a
+    jr .updateDirectionRam
+
+.setNorthSprite:
+    cp a, DIRECTION_NORTH
+    jr nz, .setEastWestSprite
+    ld a, 1
+    ld [_OAMRAM + 2], a
+    jr .updateDirectionRam
+
+.setEastWestSprite:
+    ld a, 2
+    ld [_OAMRAM + 2], a
+    ld a, b
+    bit 0, a
+    jr nz, .doNotFlip
+    ld a, [_OAMRAM + 3]
+    set 5, a
+    jr .saveOAMFlags
+
+.doNotFlip:
+    ld a, [_OAMRAM + 3]
+    res 5, a
+
+.saveOAMFlags:
+    ld [_OAMRAM + 3], a
+
+.updateDirectionRam:
+    ld a, [mainCharAnimationFlags]
+    and a, ~MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
+    add a, b
+    ld [mainCharAnimationFlags], a
+    
+.animateSprite:
+    ld a, [mainCharAnimationCounter]
+    dec a
+    jr nz, .endAnimateMainChar
+
+    ld a, [mainCharAnimationFlags]
+    and a, MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
+    bit 1, a
+    jr nz, .animateEastWest
+
+    ld a, [_OAMRAM + 3]
+    bit 5, a
+    jr z, .flipSpriteAnimateNS
+    set 5, a
+    jr .saveOAMFlags2
+
+.flipSpriteAnimateNS:
+    res 5, a
+
+.saveOAMFlags2:
+    ld [_OAMRAM + 3], a
+
+.animateEastWest:
+
+.endAnimateSprite:
+    ld a, [mainCharAnimationDelay]
+
+.endAnimateMainChar:
+    ld [mainCharAnimationCounter], a
+    ret
 
 Memcopy:
     ld a, [de]
@@ -291,37 +304,16 @@ IsWallTile:
     cp a, $07
     ret
 
-; Checks if a brick was collided with and breaks it if possible.
-; @param hl: address of tile.
-CheckAndHandleBrick:
-    ld a, [hl]
-    cp a, BRICK_LEFT
-    jr nz, CheckAndHandleBrickRight
-    ; Break a brick from the left side.
-    ld [hl], BLANK_TILE
-    inc hl
-    ld [hl], BLANK_TILE
-CheckAndHandleBrickRight:
-    cp a, BRICK_RIGHT
-    ret nz
-    ; Break a brick from the right side.
-    ld [hl], BLANK_TILE
-    dec hl
-    ld [hl], BLANK_TILE
-    ret
-
 MainCharTiles:
     incbin "assets/mainchar.2bpp"
 MainCharTilesEnd:
 
 
-SECTION "Counter", WRAM0
-wFrameCounter: db
+SECTION "MainCharData", WRAM0
+mainCharAnimationFlags: db
+mainCharAnimationDelay: db
+mainCharAnimationCounter: db
 
 SECTION "Input Variables", WRAM0
 wCurKeys: db
 wNewKeys: db
-
-SECTION "Ball Data", WRAM0
-wBallMomentumX: db
-wBallMomentumY: db
