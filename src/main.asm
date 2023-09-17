@@ -54,84 +54,145 @@ ClearOam:
 
 ConfigureMainCharSpriteData:
     ld a, 0
-    ld [mainCharAnimationCounter], a
     set MAIN_CHAR_FLAGS_CURR_ANM, a
     ld [mainCharAnimationFlags], a
-    ld a, 8
+    ld a, 5
+    ld [mainCharMoveDelay], a
+    ld [mainCharMoveCounter], a
+
+    ld a, 30
+    ld [mainCharAnimationCounter], a
     ld [mainCharAnimationDelay], a
 
 Main:
     call UpdateKeys
 
-MoveMainChar:
 .waitVBlank:
     ld a, [rLY]
     cp 144
     jr c, .waitVBlank
+
+MoveMainChar:
+
+.updateCounters:
+    ld b, DIRECTION_NONE
+    ld a, [mainCharMoveCounter]
+    ld c, a
 
 .checkLeft:
     ld a, [wCurKeys]
     and a, PADF_LEFT
     jr z, .checkRight
 .left:
+    ld b, DIRECTION_WEST
+
+    ; Check if counter allows movement
+    ld a, c
+    cp a, 0
+    jr nz, .animateMainCharSprite
+
+    ; Check if sprite is hitting a border
     ld a, [_OAMRAM + 1]
     dec a
-    cp a, 15
-    jr z, .checkUp
-    ld [_OAMRAM + 1], a
-    ld b, DIRECTION_WEST
-    call AnimateMainChar
-    jr .checkUp
+    cp a, 8
+    jr z, .animateMainCharSprite
 
-; Then check the right button.
+    ; Update
+    ld [_OAMRAM + 1], a
+    ld a, [mainCharMoveDelay]
+    ld c, a
+    jr .animateMainCharSprite
+
 .checkRight:
     ld a, [wCurKeys]
     and a, PADF_RIGHT
     jr z, .checkUp
+
 .right:
-    ; Move the paddle one pixel to the right.
+    ld b, DIRECTION_EAST
+
+    ; Check if counter allows movement
+    ld a, c
+    cp a, 0
+    jr nz, .animateMainCharSprite
+
+    ; Check if sprite is hitting a border
     ld a, [_OAMRAM + 1]
     inc a
-    ; If we've already hit the edge of the playfield, don't move.
-    cp a, 105
-    jr z, .checkUp
+    cp a, 160
+    jr z, .animateMainCharSprite
+
+    ; Update
     ld [_OAMRAM + 1], a
-    ld b, DIRECTION_EAST
-    call AnimateMainChar
+    ld a, [mainCharMoveDelay]
+    ld c, a
+    jr .animateMainCharSprite
 
 .checkUp:
     ld a, [wCurKeys]
     and a, PADF_UP
     jr z, .checkDown
 .up:
-    ; Move the paddle one pixel up
+    ld b, DIRECTION_NORTH
+
+    ; Check if counter allows movement
+    ld a, c
+    cp a, 0
+    jr nz, .animateMainCharSprite
+
+    ; Check if sprite is hitting a border
     ld a, [_OAMRAM]
     dec a
-    ; If we've already hit the edge of the playfield, don't move.
-    cp a, 16
-    jr z, .checkDown
+    cp a, 24
+    jr z, .animateMainCharSprite
+
+    ; Update
     ld [_OAMRAM], a
-    ld b, DIRECTION_NORTH
-    call AnimateMainChar
+    ld a, [mainCharMoveDelay]
+    ld c, a
+    jr .animateMainCharSprite
 
 .checkDown:
     ld a, [wCurKeys]
     and a, PADF_DOWN
-    jr z, Main
+    jr z, .endMoveMainChar
 .down:
-    ; Move the paddle one pixel down
+    ld b, DIRECTION_SOUTH
+
+    ; Check if counter allows movement
+    ld a, c
+    cp a, 0
+    jr nz, .animateMainCharSprite
+
+    ; Check if sprite is hitting a border
     ld a, [_OAMRAM]
     inc a
-    ; If we've already hit the edge of the playfield, don't move.
-    cp a, 115
-    jr z, Main
+    cp a, 152
+    jr z, .animateMainCharSprite
+
+    ; Update
     ld [_OAMRAM], a
-    ld b, DIRECTION_SOUTH
+    ld a, [mainCharMoveDelay]
+    ld c, a
+
+.animateMainCharSprite:
+    push bc
     call AnimateMainChar
-    jr Main
+    pop bc
+
+.updateMoveCounter:
+    ld a, c
+    cp a, 0
+    jr z, .endMoveMainChar
+    dec a
+    ld [mainCharMoveCounter], a
+
+.endMoveMainChar:
+    jp Main
 
 ; Animate main character sprite
 ; @param b: new direction
+; @param c: move counter: equals to mainCharMoveDelay if moved in this update
 AnimateMainChar:
     ; First check if direction has changed
     ld a, [mainCharAnimationFlags]
@@ -179,7 +240,7 @@ AnimateMainChar:
     
 .animateSprite:
     ld a, [mainCharAnimationCounter]
-    dec a
+    cp a, 0
     jr nz, .endAnimateMainChar
 
     ld a, [mainCharAnimationFlags]
@@ -189,7 +250,7 @@ AnimateMainChar:
 
     ld a, [_OAMRAM + 3]
     bit 5, a
-    jr z, .flipSpriteAnimateNS
+    jr nz, .flipSpriteAnimateNS
     set 5, a
     jr .saveOAMFlags2
 
@@ -198,13 +259,26 @@ AnimateMainChar:
 
 .saveOAMFlags2:
     ld [_OAMRAM + 3], a
+    jr .endAnimateSprite
 
 .animateEastWest:
+    ld a, [_OAMRAM + 2]
+    cp a, 2
+    jr z, .setSprite3
+    ld a, 2
+    jr .saveOAMSprite
+
+.setSprite3:
+    ld a, 3
+
+.saveOAMSprite:
+    ld [_OAMRAM + 2], a
 
 .endAnimateSprite:
     ld a, [mainCharAnimationDelay]
 
 .endAnimateMainChar:
+    dec a
     ld [mainCharAnimationCounter], a
     ret
 
@@ -313,6 +387,8 @@ SECTION "MainCharData", WRAM0
 mainCharAnimationFlags: db
 mainCharAnimationDelay: db
 mainCharAnimationCounter: db
+mainCharMoveDelay: db
+mainCharMoveCounter: db
 
 SECTION "Input Variables", WRAM0
 wCurKeys: db
