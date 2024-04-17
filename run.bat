@@ -1,1 +1,0 @@
-D:\Emulicious\Emulicious.exe build\main.gb

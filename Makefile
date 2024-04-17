@@ -17,12 +17,10 @@ build/arkanoid.gb: build/tutorial/main.o
 build/arkanoid.sym: build/tutorial/main.o
 	rgblink -n $(subst .gb, .sym, $@) $^
 
-build/main.gb: build/main.o
+build/main.gb: build/main.o build/graphics.o build/physics.o build/ram_map.o
 	rgblink -o $@ $^
 	rgbfix -v -p 0xFF $@
-
-build/main.sym: build/main.o
-	rgblink -n $(subst .gb, .sym, $@) $^
+	rgblink -n $(subst .gb,.sym, $@) $^
 
 arkanoid: build/arkanoid.gb build/arkanoid.sym
 
