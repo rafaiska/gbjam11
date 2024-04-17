@@ -12,7 +12,7 @@ EntryPoint:
 WaitVBlank:
     ld a, [rLY]
     cp 144
-    jp c, WaitVBlank
+    jr c, WaitVBlank
 
     ; Turn the LCD off
     ld a, 0
@@ -42,7 +42,7 @@ WaitVBlank:
 ClearOam:
     ld [hli], a
     dec b
-    jp nz, ClearOam
+    jr nz, ClearOam
 
 	; Initialize the main char sprite in OAM
     ld hl, _OAMRAM
@@ -66,233 +66,35 @@ ClearOam:
 
 ConfigureMainCharSpriteData:
     ld a, 0
-    set MAIN_CHAR_FLAGS_CURR_ANM, a
-    ld [mainCharAnimationFlags], a
+    ld [GameObjectData + 1 + GAME_OBJECT_FLAGS], a
+
+    ld hl, _OAMRAM
+    ld a, h
+    ld [GameObjectData + 1 + GAME_OBJECT_OAM], a
+    ld a, l
+    ld [GameObjectData + 1 + GAME_OBJECT_OAM + 1], a
+    
+
     ld a, 5
-    ld [mainCharMoveDelay], a
-    ld [mainCharMoveCounter], a
+    ld [GameObjectData + 1 + GAME_OBJECT_MOVE_DELAY], a
+    ld [GameObjectData + 1 + GAME_OBJECT_MOVE_COUNTER], a
 
     ld a, 30
-    ld [mainCharAnimationCounter], a
-    ld [mainCharAnimationDelay], a
+    ld [GameObjectData + 1 + GAME_OBJECT_ANIMATION_DELAY], a
+    ld [GameObjectData + 1 + GAME_OBJECT_ANIMATION_COUNTER], a
 
 Main:
     call UpdateKeys
+    call UpdatePhysics
 
 .waitVBlank:
     ld a, [rLY]
     cp 144
     jr c, .waitVBlank
+    call UpdateGraphics
 
-MoveMainChar:
-
-.updateCounters:
-    ld b, DIRECTION_NONE
-    ld a, [mainCharMoveCounter]
-    ld c, a
-
-.checkLeft:
-    ld a, [wCurKeys]
-    and a, PADF_LEFT
-    jr z, .checkRight
-.left:
-    ld b, DIRECTION_WEST
-
-    ; Check if counter allows movement
-    ld a, c
-    cp a, 0
-    jr nz, .animateMainCharSprite
-
-    ; Check if sprite is hitting a border
-    ld a, [_OAMRAM + 1]
-    dec a
-    cp a, 8
-    jr z, .animateMainCharSprite
-
-    ; Update
-    ld [_OAMRAM + 1], a
-    ld a, [mainCharMoveDelay]
-    ld c, a
-    jr .animateMainCharSprite
-
-.checkRight:
-    ld a, [wCurKeys]
-    and a, PADF_RIGHT
-    jr z, .checkUp
-
-.right:
-    ld b, DIRECTION_EAST
-
-    ; Check if counter allows movement
-    ld a, c
-    cp a, 0
-    jr nz, .animateMainCharSprite
-
-    ; Check if sprite is hitting a border
-    ld a, [_OAMRAM + 1]
-    inc a
-    cp a, 160
-    jr z, .animateMainCharSprite
-
-    ; Update
-    ld [_OAMRAM + 1], a
-    ld a, [mainCharMoveDelay]
-    ld c, a
-    jr .animateMainCharSprite
-
-.checkUp:
-    ld a, [wCurKeys]
-    and a, PADF_UP
-    jr z, .checkDown
-.up:
-    ld b, DIRECTION_NORTH
-
-    ; Check if counter allows movement
-    ld a, c
-    cp a, 0
-    jr nz, .animateMainCharSprite
-
-    ; Check if sprite is hitting a border
-    ld a, [_OAMRAM]
-    dec a
-    cp a, 24
-    jr z, .animateMainCharSprite
-
-    ; Update
-    ld [_OAMRAM], a
-    ld a, [mainCharMoveDelay]
-    ld c, a
-    jr .animateMainCharSprite
-
-.checkDown:
-    ld a, [wCurKeys]
-    and a, PADF_DOWN
-    jr z, .endMoveMainChar
-.down:
-    ld b, DIRECTION_SOUTH
-
-    ; Check if counter allows movement
-    ld a, c
-    cp a, 0
-    jr nz, .animateMainCharSprite
-
-    ; Check if sprite is hitting a border
-    ld a, [_OAMRAM]
-    inc a
-    cp a, 150
-    jr z, .animateMainCharSprite
-
-    ; Update
-    ld [_OAMRAM], a
-    ld a, [mainCharMoveDelay]
-    ld c, a
-
-.animateMainCharSprite:
-    push bc
-    call AnimateMainChar
-    pop bc
-
-.updateMoveCounter:
-    ld a, c
-    cp a, 0
-    jr z, .endMoveMainChar
-    dec a
-    ld [mainCharMoveCounter], a
-
-.endMoveMainChar:
-    jp Main
-
-; Animate main character sprite
-; @param b: new direction
-; @param c: move counter: equals to mainCharMoveDelay if moved in this update
-AnimateMainChar:
-    ; First check if direction has changed
-    ld a, [mainCharAnimationFlags]
-    and a, MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
-    cp a, b
-    jr z, .animateSprite
-    ld a, b
-
-.setSouthSprite:
-    cp a, DIRECTION_SOUTH
-    jr nz, .setNorthSprite
-    ld a, 0
-    ld [_OAMRAM + 2], a
-    jr .updateDirectionRam
-
-.setNorthSprite:
-    cp a, DIRECTION_NORTH
-    jr nz, .setEastWestSprite
-    ld a, 1
-    ld [_OAMRAM + 2], a
-    jr .updateDirectionRam
-
-.setEastWestSprite:
-    ld a, 2
-    ld [_OAMRAM + 2], a
-    ld a, b
-    bit 0, a
-    jr nz, .doNotFlip
-    ld a, [_OAMRAM + 3]
-    set 5, a
-    jr .saveOAMFlags
-
-.doNotFlip:
-    ld a, [_OAMRAM + 3]
-    res 5, a
-
-.saveOAMFlags:
-    ld [_OAMRAM + 3], a
-
-.updateDirectionRam:
-    ld a, [mainCharAnimationFlags]
-    and a, ~MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
-    add a, b
-    ld [mainCharAnimationFlags], a
-    
-.animateSprite:
-    ld a, [mainCharAnimationCounter]
-    cp a, 0
-    jr nz, .endAnimateMainChar
-
-    ld a, [mainCharAnimationFlags]
-    and a, MAIN_CHAR_FLAGS_CURR_DIRECTION_MASK
-    bit 1, a
-    jr nz, .animateEastWest
-
-    ld a, [_OAMRAM + 3]
-    bit 5, a
-    jr nz, .flipSpriteAnimateNS
-    set 5, a
-    jr .saveOAMFlags2
-
-.flipSpriteAnimateNS:
-    res 5, a
-
-.saveOAMFlags2:
-    ld [_OAMRAM + 3], a
-    jr .endAnimateSprite
-
-.animateEastWest:
-    ld a, [_OAMRAM + 2]
-    cp a, 2
-    jr z, .setSprite3
-    ld a, 2
-    jr .saveOAMSprite
-
-.setSprite3:
-    ld a, 3
-
-.saveOAMSprite:
-    ld [_OAMRAM + 2], a
-
-.endAnimateSprite:
-    ld a, [mainCharAnimationDelay]
-
-.endAnimateMainChar:
-    dec a
-    ld [mainCharAnimationCounter], a
-    ret
+.endMain:
+    jr Main
 
 Memcopy:
     ld a, [de]
@@ -419,15 +221,3 @@ db $02, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $0
 db $02, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $03, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
 db $0A, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $04, $0B, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
 TilemapEnd:
-
-
-SECTION "MainCharData", WRAM0
-mainCharAnimationFlags: db
-mainCharAnimationDelay: db
-mainCharAnimationCounter: db
-mainCharMoveDelay: db
-mainCharMoveCounter: db
-
-SECTION "Input Variables", WRAM0
-wCurKeys: db
-wNewKeys: db
